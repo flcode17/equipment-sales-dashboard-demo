@@ -1,0 +1,7 @@
+# Local only, on its own port so it can't be mixed up with any other dashboard.
+[server]
+address = "127.0.0.1"
+port = 8502
+
+[browser]
+gatherUsageStats = false
