@@ -134,11 +134,11 @@ def months(start: date, end: date):
         y, m = (y + 1, 1) if m == 12 else (y, m + 1)
 
 
-def main() -> None:
+def main(db_path: str = DB_PATH) -> None:
     rng = random.Random(SEED)
     for suffix in ("", "-wal", "-shm"):
-        Path(DB_PATH + suffix).unlink(missing_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+        Path(db_path + suffix).unlink(missing_ok=True)
+    conn = sqlite3.connect(db_path)
     conn.executescript(SCHEMA)
 
     # Cities, each WA city with its own sales-tax rate.
@@ -175,7 +175,7 @@ def main() -> None:
         available, weights = [], []
         x3_plus_out = day >= MODELS[2][3]
         for model in MODELS:
-            name, price, popularity, launched, discontinued = model
+            name, _, popularity, launched, discontinued = model
             if (launched and day < launched) or (discontinued and day > discontinued):
                 continue
             weight = popularity
@@ -275,9 +275,10 @@ def main() -> None:
         day += timedelta(days=1)
 
     conn.execute("INSERT INTO meta VALUES ('source', 'demo')")
+    conn.execute("INSERT INTO meta VALUES ('generated_on', ?)", (END.isoformat(),))
     conn.commit()
     conn.close()
-    print(f"Wrote {DB_PATH} ({START} to {END}): {len(customers)} customers, {lead_id} leads, "
+    print(f"Wrote {db_path} ({START} to {END}): {len(customers)} customers, {lead_id} leads, "
           + ", ".join(f"{n} {t}" for t, n in counters.items()))
 
 

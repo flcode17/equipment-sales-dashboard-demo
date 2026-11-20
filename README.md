@@ -18,12 +18,21 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-python3 generate_demo_data.py   # builds demo.db (~2 years ending today)
-streamlit run dashboard.py      # opens at http://127.0.0.1:8502
+streamlit run dashboard.py --server.address 127.0.0.1 --server.port 8502
+# opens at http://127.0.0.1:8502
 ```
 
-Re-run `generate_demo_data.py` whenever you want the data to end on today's
-date. Same seed, so the history stays consistent.
+The dashboard builds `demo.db` itself (about two years of data ending today)
+and rebuilds it once a day so the dates stay current. Same random seed every
+time, so the history stays consistent.
+
+## Hosting (Streamlit Community Cloud)
+
+1. Sign in at share.streamlit.io with GitHub.
+2. Create app → this repo, branch `main`, main file `dashboard.py`.
+3. Under Advanced settings, pick Python 3.13.
+
+No secrets or settings needed; the app generates its own data.
 
 ## What's on it
 

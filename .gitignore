@@ -6,3 +6,4 @@ __pycache__/
 demo.db
 demo.db-wal
 demo.db-shm
+demo.db.building

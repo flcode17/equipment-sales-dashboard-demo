@@ -1,12 +1,14 @@
 """
 Demo version of the equipment-sales metrics dashboard, for screenshots and
 presentations. Reads only demo.db -- invented data for a fictional company --
-and refuses to run against anything else.
+and refuses to run against anything else. The data is (re)generated
+automatically so it always ends on today's date.
 
-    python3 generate_demo_data.py   # once (or again to refresh dates)
-    streamlit run dashboard.py      # http://127.0.0.1:8502
+    streamlit run dashboard.py --server.address 127.0.0.1 --server.port 8502
 """
+import os
 import sqlite3
+from contextlib import closing
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -64,19 +66,38 @@ st.markdown(
 )
 
 
-def open_demo_db() -> sqlite3.Connection:
-    if not DB_PATH.exists():
-        st.error("demo.db not found. Run `python3 generate_demo_data.py` first.")
-        st.stop()
-    conn = sqlite3.connect(DB_PATH)
+def _meta(key: str) -> str | None:
     try:
-        source = conn.execute("SELECT value FROM meta WHERE key = 'source'").fetchone()
+        with closing(sqlite3.connect(DB_PATH)) as conn:
+            row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else None
     except sqlite3.DatabaseError:
-        source = None
-    if not source or source[0] != "demo":
+        return None
+
+
+@st.cache_resource(show_spinner="Generating demo data…")
+def _refresh_demo_data(day: str) -> None:
+    """Rebuild the fake data so it ends on `day`. Cached per day, so a
+    long-running hosted app regenerates once a day, not on every visit.
+    Built in a temp file and swapped in, so a visitor mid-request never sees
+    a half-written database."""
+    import generate_demo_data
+    tmp = DB_PATH.with_name("demo.db.building")
+    generate_demo_data.main(str(tmp))
+    os.replace(tmp, DB_PATH)
+
+
+def open_demo_db() -> sqlite3.Connection:
+    if DB_PATH.exists() and _meta("source") != "demo":
         st.error("This isn't the demo database. The demo only runs on data made by generate_demo_data.py.")
         st.stop()
-    return conn
+    today_iso = date.today().isoformat()
+    if _meta("generated_on") != today_iso:
+        _refresh_demo_data(today_iso)
+        if _meta("generated_on") != today_iso:  # file changed after today's cached build
+            _refresh_demo_data.clear()
+            _refresh_demo_data(today_iso)
+    return sqlite3.connect(DB_PATH)
 
 
 def money(value: float) -> str:
@@ -116,7 +137,7 @@ def style(fig, height: int = 240, x_grid: bool = True, y_grid: bool = False, leg
 
 
 def show(fig) -> None:
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
 
 TIMEFRAMES = ["Past week", "Past month", "Past 6 months", "Past year", "All time", "Custom range"]
@@ -192,8 +213,10 @@ with st.container(border=True):
     if cities.empty:
         empty()
     else:
+        # Label only the biggest city per warehouse: the Puget Sound cities sit
+        # too close together for more labels without collisions (rest on hover).
         cities["label"] = ""
-        top = cities.nlargest(5, "units").index
+        top = cities.loc[cities.groupby("warehouse")["units"].idxmax()].index
         cities.loc[top, "label"] = cities.loc[top, "city"]
         fig = px.scatter_geo(
             cities, lat="lat", lon="lon", size="units", color="warehouse", text="label",
@@ -203,9 +226,13 @@ with st.container(border=True):
         )
         fig.update_traces(marker=dict(opacity=0.7, line=dict(width=2, color=SURFACE)),
                           textposition="top center", textfont=dict(color=INK_SECONDARY, size=11))
+        # Zoom to WA/OR explicitly ("fitbounds" doesn't zoom the USA scope's projection).
         fig.update_geos(
-            scope="usa", fitbounds="locations", showland=True, landcolor="#f0efec",
-            subunitcolor=BASELINE, countrycolor=BASELINE, showlakes=False, bgcolor=SURFACE,
+            scope="north america", projection_type="mercator", resolution=50,
+            lataxis_range=[43.3, 49.4], lonaxis_range=[-124.9, -116.2],
+            showland=True, landcolor="#f0efec", showocean=True, oceancolor=SURFACE,
+            showsubunits=True, subunitcolor=BASELINE, showcountries=True, countrycolor=BASELINE,
+            showcoastlines=True, coastlinecolor=BASELINE, showlakes=False, bgcolor=SURFACE,
         )
         style(fig, height=360, legend=True)
         fig.update_layout(legend=dict(title=None, orientation="h", y=1.02, x=0, yanchor="bottom"))
